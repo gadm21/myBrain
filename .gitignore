@@ -1,0 +1,11 @@
+# ignore env files
+.env
+
+# ignore venv
+venv/
+
+# ignore logs
+logs/
+
+# ignore test_endpoints.sh
+test_endpoints.sh
