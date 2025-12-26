@@ -71,18 +71,33 @@ def get_status_message() -> str:
 
 
 def send_status(message: str = "", to_phone_number: str = ""):
-    """Send status update to all connected devices."""
+    """Send an encouraging message to Gad periodically."""
+    import random
+    
+    encouraging_messages = [
+        "Hey Gad! Just a reminder: you're doing amazing work. Keep pushing forward - the world needs what you're building! 💪",
+        "Gad, every challenge you face is making you stronger. You've got this! Keep moving forward. 🚀",
+        "Remember Gad: great things take time. Your persistence will pay off. Stay focused and keep going! ⭐",
+        "Hey Gad! The journey is tough but you're tougher. Believe in yourself - you're capable of incredible things! 🌟",
+        "Gad, success is built one day at a time. You're making progress even when it doesn't feel like it. Keep at it! 💡",
+        "Just checking in, Gad! You're doing better than you think. Trust the process and keep moving forward! 🎯",
+        "Hey Gad! Challenges are just opportunities in disguise. You've overcome so much already - this is no different! 🔥",
+        "Gad, your hard work matters. Every step forward counts. Keep believing in yourself! 🌈",
+        "Remember Gad: you're not alone in this journey. Keep pushing - amazing things are ahead! ✨",
+        "Hey Gad! Take a moment to appreciate how far you've come. Now keep going - the best is yet to come! 🏆",
+    ]
+    
     try:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        default_message = f"Thoth API Status: Running as of {current_time}"
-        message = message or default_message
-        recipient_phone = "+18073587137" 
-        recipient_phone = to_phone_number or recipient_phone  # Hardcoded E.164 format
+        # Always send to Gad's phone
+        recipient_phone = "+18073587137"
+        # Use provided message or pick a random encouraging one
+        message = message or random.choice(encouraging_messages)
         success = send_twilio_message(recipient_phone, message)
         if not success:
             log_error(f"[send_status] Failed to send SMS to {recipient_phone}")
         else:
-            log_something(f"[send_status] SMS sent to {recipient_phone} at {current_time}", endpoint="send_status")
+            log_something(f"[send_status] Encouraging SMS sent to Gad at {current_time}", endpoint="send_status")
     except Exception as e:
         log_error(f"[send_status] Error: {e}")
 
