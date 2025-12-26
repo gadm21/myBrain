@@ -58,8 +58,15 @@ async def handle_twilio_incoming_message(
         # Normalize phone number (remove non-digits)
         normalized_from = re.sub(r'\D', '', from_number)
         
+        # Gad's phone number - always allowed
+        GAD_PHONE = "18073587137"
+        
         # Find user by phone number
         user = db.query(User).filter(User.phone_number == int(normalized_from)).first() if normalized_from.isdigit() else None
+        
+        # If it's Gad's phone but no user found, find Gad's user account
+        if not user and normalized_from == GAD_PHONE:
+            user = db.query(User).filter(User.username == "gad").first()
         
         if not user:
             log_error(f"Unauthorized access attempt from {from_number}")
