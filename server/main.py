@@ -236,7 +236,10 @@ ALLOWED_ORIGINS = [
     "http://localhost:3002",  # Website
     "https://thoth-frontend-sable.vercel.app",
     "https://portal-three-rho.vercel.app",  # Research Portal on Vercel
-    "https://web-production-d7d37.up.railway.app"  # Backend domain
+    "https://web-production-d7d37.up.railway.app",  # Backend domain (old)
+    "https://web-production-80b7.up.railway.app",  # Backend domain (new)
+    "https://gadgad.me",  # Personal website
+    "https://www.gadgad.me",  # Personal website with www
 ]
 
 # --------------------------------------------------
