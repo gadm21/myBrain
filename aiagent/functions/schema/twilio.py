@@ -48,13 +48,15 @@ def send_twilio_message(to_phone_number: str, message: str) -> Dict[str, Any]:
         "date_created": result.get("date_created"),
     }
 
-    # Best-effort: record the sent SMS into the current user's short-term memory
+    # Best-effort: record the sent SMS into Gad's short-term memory (since all messages go to Gad)
     try:
-        # CURRENT_USER_ID is set by aiagent.handler.query.query_openai via globals()
-        user_id = globals().get("CURRENT_USER_ID")
-        if user_id is not None:
-            db = SessionLocal()
-            try:
+        from server.db import User
+        db = SessionLocal()
+        try:
+            # Always save to Gad's account since messages are sent to Gad
+            gad_user = db.query(User).filter(User.username == "gad").first()
+            if gad_user:
+                user_id = gad_user.userId
                 stm_file = db.query(DBFile).filter(DBFile.userId == user_id, DBFile.filename == "short_term_memory.json").first()
                 memory = {}
                 if stm_file and stm_file.content:
@@ -110,8 +112,8 @@ def send_twilio_message(to_phone_number: str, message: str) -> Dict[str, Any]:
                     new_file.size = len(encoded)
                     db.add(new_file)
                 db.commit()
-            finally:
-                db.close()
+        finally:
+            db.close()
     except Exception:
         # Do not fail tool on memory update issues
         pass
