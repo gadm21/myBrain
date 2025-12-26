@@ -49,15 +49,20 @@ def send_twilio_message(to_phone_number: str, message: str) -> Dict[str, Any]:
     }
 
     # Best-effort: record the sent SMS into Gad's short-term memory (since all messages go to Gad)
+    import logging
+    logger = logging.getLogger(__name__)
     try:
         from server.db import User
         db = SessionLocal()
         try:
             # Always save to Gad's account since messages are sent to Gad
             gad_user = db.query(User).filter(User.username == "gad").first()
+            logger.info(f"[SMS History] Looking for gad user, found: {gad_user}")
             if gad_user:
                 user_id = gad_user.userId
+                logger.info(f"[SMS History] Gad user_id: {user_id}")
                 stm_file = db.query(DBFile).filter(DBFile.userId == user_id, DBFile.filename == "short_term_memory.json").first()
+                logger.info(f"[SMS History] Found existing stm_file: {stm_file is not None}")
                 memory = {}
                 if stm_file and stm_file.content:
                     try:
@@ -112,10 +117,13 @@ def send_twilio_message(to_phone_number: str, message: str) -> Dict[str, Any]:
                     new_file.size = len(encoded)
                     db.add(new_file)
                 db.commit()
+                logger.info(f"[SMS History] Successfully saved SMS history with {len(sent_sms)} messages")
+            else:
+                logger.warning("[SMS History] Gad user not found in database!")
         finally:
             db.close()
-    except Exception:
+    except Exception as e:
         # Do not fail tool on memory update issues
-        pass
+        logger.error(f"[SMS History] Error saving SMS history: {e}")
 
     return payload

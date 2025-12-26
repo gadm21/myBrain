@@ -111,11 +111,15 @@ async def handle_twilio_incoming_message(
             try:
                 # Always read from Gad's account since that's where SMS history is stored
                 gad_user = db.query(User).filter(User.username == "gad").first()
+                log_response(200, f"[SMS History Read] Found gad user: {gad_user is not None}", "/phone/incoming-message")
                 gad_user_id = gad_user.userId if gad_user else user.userId
+                log_response(200, f"[SMS History Read] Using user_id: {gad_user_id}", "/phone/incoming-message")
                 stm_file = db.query(DBFile).filter(DBFile.userId == gad_user_id, DBFile.filename == "short_term_memory.json").first()
+                log_response(200, f"[SMS History Read] Found stm_file: {stm_file is not None}", "/phone/incoming-message")
                 if stm_file and stm_file.content:
                     memory = json.loads(stm_file.content.decode("utf-8"))
                     sent_sms = memory.get("sent_sms", [])
+                    log_response(200, f"[SMS History Read] Found {len(sent_sms)} SMS messages in history", "/phone/incoming-message")
                     if sent_sms:
                         # Get last 10 sent messages for context
                         recent_sms = sent_sms[-10:]
