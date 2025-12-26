@@ -162,16 +162,9 @@ def query_openai(
                 logging.error(f"Failed to parse arguments for {function_name}: {e}. Raw: {raw_args}")
                 parsed_args = {}
 
-            # Call through registry helper first (allows additional wrappers)
+            # Call through registry helper (handles function execution with wrappers)
             function_result = tools.resolve_function(function_name, parsed_args)
             logging.info(f"[AI Agent] Tool result: {function_result}")
-
-            # If the concrete callable is present, execute directly as well
-            if function_name in function_map:
-                try:
-                    function_result = function_map[function_name](**parsed_args)
-                except Exception as e:
-                    logging.error(f"Error while executing {function_name}: {e}")
 
             # Serialise result for message content
             serialised_result = (
