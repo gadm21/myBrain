@@ -73,6 +73,7 @@ def get_status_message() -> str:
 def send_status(message: str = "", to_phone_number: str = ""):
     """Send an encouraging message to Gad periodically."""
     import random
+    from server.db import File as DBFile, User
     
     encouraging_messages = [
         "Hey Gad! Your PhD research on privacy-preserving ML is groundbreaking. 18 publications and counting - you're making real impact! Keep pushing! 💪",
@@ -94,6 +95,49 @@ def send_status(message: str = "", to_phone_number: str = ""):
         # Use provided message or pick a random encouraging one
         message = message or random.choice(encouraging_messages)
         success = send_twilio_message(recipient_phone, message)
+        
+        # Record this as a periodic message in Gad's memory
+        db = SessionLocal()
+        try:
+            gad_user = db.query(User).filter(User.username == "gad").first()
+            if gad_user:
+                stm_file = db.query(DBFile).filter(DBFile.userId == gad_user.userId, DBFile.filename == "short_term_memory.json").first()
+                memory = {}
+                if stm_file and stm_file.content:
+                    try:
+                        memory = json.loads(stm_file.content.decode("utf-8"))
+                    except:
+                        memory = {}
+                
+                sent_sms = memory.get("sent_sms", [])
+                sent_sms.append({
+                    "to": recipient_phone,
+                    "message": message,
+                    "date": current_time,
+                    "source": "periodic_encouragement",
+                    "original_request": "Automated periodic encouragement message from your AI assistant",
+                })
+                if len(sent_sms) > 100:
+                    sent_sms = sent_sms[-100:]
+                memory["sent_sms"] = sent_sms
+                
+                encoded = json.dumps(memory).encode("utf-8")
+                if stm_file:
+                    stm_file.content = encoded
+                    stm_file.size = len(encoded)
+                else:
+                    new_file = DBFile(
+                        userId=gad_user.userId,
+                        filename="short_term_memory.json",
+                        content=encoded,
+                        content_type="application/json",
+                    )
+                    new_file.size = len(encoded)
+                    db.add(new_file)
+                db.commit()
+        finally:
+            db.close()
+        
         if not success:
             log_error(f"[send_status] Failed to send SMS to {recipient_phone}")
         else:

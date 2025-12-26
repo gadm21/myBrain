@@ -76,13 +76,20 @@ def send_twilio_message(to_phone_number: str, message: str) -> Dict[str, Any]:
                     conversations = conversations[-50:]
                 memory["conversations"] = conversations
 
-                # Maintain a sent_sms list to help the agent avoid repeats
+                # Maintain a sent_sms list to help the agent track who requested each message
                 sent_sms = memory.get("sent_sms", [])
+                
+                # Get the original query that triggered this SMS from globals
+                original_query = globals().get("CURRENT_QUERY", "Unknown request")
+                source = globals().get("MESSAGE_SOURCE", "website_visitor")
+                
                 sent_sms.append({
                     "to": payload.get("to") or to_phone_number,
                     "message": message,
                     "sid": payload.get("message_sid"),
                     "date": payload.get("date_created") or datetime.utcnow().isoformat(),
+                    "source": source,
+                    "original_request": original_query,
                 })
                 if len(sent_sms) > 100:
                     sent_sms = sent_sms[-100:]

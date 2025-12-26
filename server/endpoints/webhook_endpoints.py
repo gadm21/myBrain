@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session
 from twilio.twiml.voice_response import VoiceResponse
 
-from server.db import get_db, User, Query as DBQuery
+from server.db import get_db, User, Query as DBQuery, File as DBFile
 from server.utils.logging_utils import log_request_start, log_response, log_error, log_request_payload
 from aiagent.handler.query import query_openai
 from aiagent.memory.memory_manager import LongTermMemoryManager, ShortTermMemoryManager
@@ -106,13 +106,40 @@ async def handle_twilio_incoming_message(
             long_term_memory = LongTermMemoryManager()
             short_term_memory = ShortTermMemoryManager()
             
+            # Load sent SMS history to provide context about who requested messages
+            sms_history_context = ""
+            try:
+                stm_file = db.query(DBFile).filter(DBFile.userId == user.userId, DBFile.filename == "short_term_memory.json").first()
+                if stm_file and stm_file.content:
+                    memory = json.loads(stm_file.content.decode("utf-8"))
+                    sent_sms = memory.get("sent_sms", [])
+                    if sent_sms:
+                        # Get last 10 sent messages for context
+                        recent_sms = sent_sms[-10:]
+                        sms_history_context = "\n\nRECENT SMS MESSAGES YOU SENT TO GAD:\n"
+                        for sms in recent_sms:
+                            source = sms.get("source", "unknown")
+                            original_req = sms.get("original_request", "Unknown")
+                            msg = sms.get("message", "")[:100]
+                            date = sms.get("date", "")
+                            sms_history_context += f"- [{date}] Source: {source} | Request: '{original_req}' | Message: '{msg}...'\n"
+            except Exception as e:
+                log_error(f"Error loading SMS history: {e}")
+            
+            # Build context with SMS history
+            sms_context = {
+                "source": "sms_reply",
+                "sms_history": sms_history_context,
+                "instruction": "Gad is replying to an SMS. Check the SMS history above to see who requested the last message and why it was sent. If he asks who sent a message, tell him based on the history."
+            }
+            
             ai_response = query_openai(
                 query=user_query_text,
                 long_term_memory=long_term_memory,
                 short_term_memory=short_term_memory,
                 max_tokens=160,  # SMS character limit consideration
                 temperature=0.7,
-                aux_data={"current_user_id": user.userId, "source": "sms"}
+                aux_data={"current_user_id": user.userId, "source": "sms", "context": sms_context}
             )
             
             # Update query with response

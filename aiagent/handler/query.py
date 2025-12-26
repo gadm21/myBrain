@@ -107,9 +107,13 @@ def query_openai(
 
     #logging.info(f"Context messages: {messages}")
     
-    # Make current user id globally accessible to function tools
+    # Make current user id and query context globally accessible to function tools
     if aux_data and aux_data.get("current_user_id") is not None:
         globals()["CURRENT_USER_ID"] = aux_data["current_user_id"]
+    
+    # Store the original query and source for SMS tracking
+    globals()["CURRENT_QUERY"] = query
+    globals()["MESSAGE_SOURCE"] = aux_data.get("source", "website_visitor") if aux_data else "website_visitor"
 
     # Query OPENAI
     model_name = os.getenv("MODEL_NAME")
