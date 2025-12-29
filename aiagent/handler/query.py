@@ -95,13 +95,32 @@ def query_openai(
         {"role": "system", "content": f"Here are the current user details: {long_term_memory_content}\n\nPast Conversations: {past_conversations}\n"}
     )
 
-    # Handle language preference
+    # Handle language preference - ALWAYS respond in selected language
     language = aux_data.get("language", "en") if aux_data else "en"
     language_name = aux_data.get("language_name", "English") if aux_data else "English"
-    if language != "en":
-        messages.append(
-            {"role": "system", "content": f"IMPORTANT: The user has selected {language_name} as their preferred language. You MUST respond in {language_name}. All your responses should be in {language_name}, not English."}
-        )
+    
+    # Always add language instruction (even for English to be explicit)
+    language_instruction = f"""CRITICAL LANGUAGE INSTRUCTION: The website language is set to {language_name}. 
+You MUST respond ONLY in {language_name}, regardless of what language the user writes their question in.
+Even if the user asks in English but the website is set to Chinese, respond in Chinese.
+Even if the user asks in Arabic but the website is set to French, respond in French.
+The website language setting ({language_name}) takes absolute priority over the question language."""
+    
+    messages.append({"role": "system", "content": language_instruction})
+    
+    # Check if this is a proactive/periodic message request
+    is_proactive = aux_data.get("is_proactive", False) if aux_data else False
+    if is_proactive:
+        proactive_instruction = """You are sending a PROACTIVE message to engage the visitor. 
+This message should be:
+1. UNIQUE - never repeat the same message twice
+2. POETIC and BOLD - use Gad's writing style from his blogs (ambitious, philosophical, slightly provocative)
+3. INSPIRING - make the visitor think deeply
+4. RELEVANT to the current page context if provided
+
+Examples of Gad's bold style: "God, delete my data now" - direct, challenging, thought-provoking.
+Be creative, philosophical, and memorable. Each message should feel like a fresh insight."""
+        messages.append({"role": "system", "content": proactive_instruction})
 
     # Add additional context if provided
     if aux_data and aux_data.get("context"):
