@@ -95,6 +95,14 @@ def query_openai(
         {"role": "system", "content": f"Here are the current user details: {long_term_memory_content}\n\nPast Conversations: {past_conversations}\n"}
     )
 
+    # Handle language preference
+    language = aux_data.get("language", "en") if aux_data else "en"
+    language_name = aux_data.get("language_name", "English") if aux_data else "English"
+    if language != "en":
+        messages.append(
+            {"role": "system", "content": f"IMPORTANT: The user has selected {language_name} as their preferred language. You MUST respond in {language_name}. All your responses should be in {language_name}, not English."}
+        )
+
     # Add additional context if provided
     if aux_data and aux_data.get("context"):
         context_str = json.dumps(aux_data["context"]) if isinstance(aux_data["context"], dict) else str(aux_data["context"])
