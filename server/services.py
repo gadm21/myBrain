@@ -70,30 +70,115 @@ def get_status_message() -> str:
 
 
 
-def send_status(message: str = "", to_phone_number: str = ""):
-    """Send an encouraging message to Gad periodically."""
-    import random
+def _generate_unique_encouragement() -> str:
+    """Generate a unique encouraging message using AI based on previously sent messages.
+    
+    Returns:
+        str: A unique, longer encouraging message that differs from recent ones.
+    """
     from server.db import File as DBFile, User
     
-    encouraging_messages = [
-        "Hey Gad! Your PhD research on privacy-preserving ML is groundbreaking. 18 publications and counting - you're making real impact! Keep pushing! 💪",
-        "Gad, federated learning is the future and you're at the forefront. Your h-index of 9 shows your work matters. Keep innovating! 🚀",
-        "Remember Gad: from Nile University to Western University - look how far you've come! Your journey inspires others. Keep going! ⭐",
-        "Hey Gad! 213 citations means 213+ researchers building on YOUR work. You're shaping the field of Wi-Fi sensing! 🌟",
-        "Gad, IEEE INFOCOM and ACM Computing Surveys - top-tier venues recognize your brilliance. The PhD finish line is closer than you think! 💡",
-        "Just checking in, Gad! Your passion for teaching has earned you awards. You're not just a researcher - you're a mentor! 🎯",
-        "Hey Gad! Privacy-preserving ML will define the next decade of AI. You chose the right path. Trust your vision! 🔥",
-        "Gad, 4 years of experience, 3 years of teaching excellence. You're building a legacy at Western University! 🌈",
-        "Remember Gad: every paper you publish, every student you teach - you're making the world better. Keep at it! ✨",
-        "Hey Gad! From Egypt to Canada, you've overcome so much. This PhD is just another challenge you'll conquer! 🏆",
+    # Get previously sent messages to avoid repetition
+    previous_messages = []
+    db = SessionLocal()
+    try:
+        gad_user = db.query(User).filter(User.username == "gad").first()
+        if gad_user:
+            stm_file = db.query(DBFile).filter(
+                DBFile.userId == gad_user.userId, 
+                DBFile.filename == "short_term_memory.json"
+            ).first()
+            if stm_file and stm_file.content:
+                try:
+                    memory = json.loads(stm_file.content.decode("utf-8"))
+                    sent_sms = memory.get("sent_sms", [])
+                    # Get last 10 periodic encouragement messages
+                    periodic_msgs = [
+                        sms["message"] for sms in sent_sms 
+                        if sms.get("source") == "periodic_encouragement"
+                    ][-10:]
+                    previous_messages = periodic_msgs
+                except:
+                    pass
+    finally:
+        db.close()
+    
+    # Build context about Gad for the AI
+    gad_context = """
+    Gad is a Computer Science PhD student at Western University, Canada.
+    - Research: Privacy-preserving ML, Federated Learning, Differential Privacy, Wi-Fi Sensing, ISAC
+    - Publications: 18+ papers, h-index 9, 213+ citations
+    - Top venues: IEEE INFOCOM, ACM Computing Surveys
+    - Background: From Egypt (Nile University) to Canada
+    - Teaching: Award-winning instructor, 3+ years experience
+    - Founder of Thothcraft
+    - Working on groundbreaking privacy-preserving sensing systems
+    """
+    
+    # Build the prompt for AI
+    previous_msgs_text = ""
+    if previous_messages:
+        previous_msgs_text = "\\n\\nPREVIOUSLY SENT MESSAGES (DO NOT REPEAT THESE OR USE SIMILAR THEMES):\\n"
+        for i, msg in enumerate(previous_messages, 1):
+            previous_msgs_text += f"{i}. {msg}\\n"
+    
+    prompt = f"""Generate a unique, heartfelt encouraging SMS message for Gad. 
+
+REQUIREMENTS:
+1. The message MUST be 200-300 characters long (longer than typical SMS but still readable)
+2. It MUST be COMPLETELY DIFFERENT from any previously sent messages in theme, structure, and content
+3. Be creative - use different angles: his journey, specific achievements, future potential, daily motivation, philosophical insights, humor, etc.
+4. Include 1-2 relevant emojis
+5. Be personal and warm, like a supportive friend or mentor
+6. Reference specific aspects of his work or journey when possible
+7. Vary the tone: sometimes inspirational, sometimes reflective, sometimes celebratory, sometimes philosophical
+
+CONTEXT ABOUT GAD:
+{gad_context}
+{previous_msgs_text}
+
+Generate ONLY the message text, nothing else. Make it genuinely unique and different from anything sent before."""
+
+    try:
+        # Use the AI agent to generate the message
+        result = ai_query_handler(
+            query=prompt,
+            chat_id="periodic_encouragement_generator",
+            context={"purpose": "generate_unique_sms", "recipient": "gad"}
+        )
+        
+        if result and result.get("success") and result.get("response"):
+            generated_msg = result["response"].strip()
+            # Ensure it's not too long for SMS (keep under 320 chars)
+            if len(generated_msg) > 320:
+                generated_msg = generated_msg[:317] + "..."
+            return generated_msg
+    except Exception as e:
+        logger.error(f"Error generating AI encouragement: {e}")
+    
+    # Fallback to a default message if AI fails
+    import random
+    fallback_messages = [
+        "Gad, your work on privacy-preserving ML is shaping the future of AI. Every line of code, every paper, every student you inspire - it all matters. The world needs researchers like you who care about both innovation AND ethics. Keep pushing boundaries! 🌟💪",
+        "Hey Gad! Remember: the PhD journey isn't just about the destination. Every challenge you overcome, every late night, every 'aha' moment - they're all building the researcher and person you're becoming. Western U is lucky to have you! 🚀✨",
+        "Thinking of you today, Gad! From the Nile to the Thames (Ontario's Thames!), your journey shows what determination looks like. 18 papers, countless students inspired, and you're just getting started. The best chapters are still being written! 📚🔥",
     ]
+    return random.choice(fallback_messages)
+
+
+def send_status(message: str = "", to_phone_number: str = ""):
+    """Send an encouraging message to Gad periodically using AI to generate unique messages."""
+    from server.db import File as DBFile, User
     
     try:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # Always send to Gad's phone
         recipient_phone = "+18073587137"
-        # Use provided message or pick a random encouraging one
-        message = message or random.choice(encouraging_messages)
+        
+        # If no message provided, generate one using AI based on previous messages
+        if not message:
+            message = _generate_unique_encouragement()
+        
         success = send_twilio_message(recipient_phone, message)
         
         # Record this as a periodic message in Gad's memory
