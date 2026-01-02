@@ -100,6 +100,120 @@ async def handle_twilio_incoming_message(
                 status_code=200
             )
         
+        # Check if this is a task-setting message for accountability system
+        task_set_response = None
+        try:
+            from server.periodic_intelligence import (
+                get_todays_task, set_todays_tasks, get_time_context,
+                update_task_progress, complete_task, get_stats_line,
+                get_gamification_stats, get_level_info
+            )
+            
+            ctx = get_time_context()
+            current_task = get_todays_task()
+            body_lower = body.lower().strip()
+            
+            # Check for progress updates (number 0-100)
+            if body_lower.isdigit():
+                progress = int(body_lower)
+                if 0 <= progress <= 100 and current_task and current_task.get("tasks"):
+                    result = update_task_progress("primary", progress)
+                    if "error" not in result:
+                        stats_line = get_stats_line()
+                        if progress == 100:
+                            comp_result = complete_task("primary")
+                            xp_msg = f"+{comp_result['xp']['xp_awarded']} XP!" if comp_result.get('xp') else ""
+                            task_set_response = f"🎉 PRIMARY TASK COMPLETE! {xp_msg}\n\n{stats_line}\n\nLegend status achieved. Keep going or rest - you've earned it.\n\n-𓂀 Thoth"
+                        else:
+                            task_set_response = f"📊 Progress updated: {progress}%\n\n{stats_line}\n\nKeep pushing! You're {100-progress}% away from victory.\n\n-𓂀 Thoth"
+                        log_response(200, f"[Accountability] Progress updated: {progress}%", "/phone/incoming-message")
+            
+            # Check for "done" keywords
+            done_keywords = ['done', 'finished', 'completed', 'did it', 'crushed it', 'nailed it', 'complete']
+            if any(kw in body_lower for kw in done_keywords) and current_task:
+                # Determine which task is done
+                task_type = "primary"
+                if "secondary" in body_lower or "2" in body_lower:
+                    task_type = "secondary"
+                elif "bonus" in body_lower or "3" in body_lower:
+                    task_type = "bonus"
+                
+                if current_task.get("tasks") and task_type in current_task["tasks"]:
+                    result = complete_task(task_type)
+                    if "error" not in result:
+                        stats_line = get_stats_line()
+                        xp_info = result.get("xp", {})
+                        xp_total = xp_info.get("xp_awarded", 0)
+                        
+                        # Add bonus XP info
+                        bonus_msgs = []
+                        if xp_info.get("bonus_xp"):
+                            bonus_msgs.append(f"⚡ Early bird: +{xp_info['bonus_xp']['xp_awarded']} XP")
+                        if xp_info.get("streak_xp"):
+                            bonus_msgs.append(f"🔥 Streak: +{xp_info['streak_xp']['xp_awarded']} XP")
+                        if xp_info.get("perfect_day_xp"):
+                            bonus_msgs.append(f"💯 PERFECT DAY: +{xp_info['perfect_day_xp']['xp_awarded']} XP")
+                        
+                        bonus_text = "\n".join(bonus_msgs) if bonus_msgs else ""
+                        level_up = "🆙 LEVEL UP!" if xp_info.get("leveled_up") else ""
+                        
+                        task_set_response = f"🎉 {task_type.upper()} COMPLETE! +{xp_total} XP {level_up}\n\n{bonus_text}\n\n{stats_line}\n\nYou absolute legend.\n\n-𓂀 Thoth"
+                        log_response(200, f"[Accountability] {task_type} completed", "/phone/incoming-message")
+                elif current_task.get("task"):
+                    # Old format - single task
+                    task = current_task.get("task")
+                    task_set_response = f"🎉 VICTORY!\n\nTask: \"{task}\"\nStatus: CRUSHED ✓\n\nYou absolute legend.\n\n-𓂀 Thoth"
+                    log_response(200, f"[Accountability] Task completed: {task}", "/phone/incoming-message")
+            
+            # Check for multi-task format: "task1 | task2 | task3"
+            if not task_set_response and "|" in body and not ctx["is_night"]:
+                parts = [p.strip() for p in body.split("|")]
+                primary = parts[0] if len(parts) > 0 else None
+                secondary = parts[1] if len(parts) > 1 else None
+                bonus = parts[2] if len(parts) > 2 else None
+                
+                if primary:
+                    result = set_todays_tasks(primary, secondary, bonus)
+                    stats_line = get_stats_line()
+                    
+                    tasks_display = f"🎯 PRIMARY: {primary}"
+                    if secondary:
+                        tasks_display += f"\n📌 SECONDARY: {secondary}"
+                    if bonus:
+                        tasks_display += f"\n⭐ BONUS: {bonus}"
+                    
+                    xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
+                    task_set_response = f"✅ TASKS LOCKED IN! {xp_msg}\n\n{tasks_display}\n\n{stats_line}\n\nI've got my eye on you. Now GO.\n\n-𓂀 Thoth"
+                    log_response(200, f"[Accountability] Multi-tasks set", "/phone/incoming-message")
+            
+            # Single task (no pipe separator)
+            if not task_set_response and not current_task and not ctx["is_night"]:
+                is_likely_task = (
+                    len(body) > 5 and
+                    not body.endswith('?') and
+                    not body_lower.startswith(('who', 'what', 'when', 'where', 'why', 'how', 'did', 'is', 'are', 'can')) and
+                    not body_lower in ('yes', 'no', 'ok', 'okay', 'done', 'thanks', 'thank you')
+                )
+                
+                if is_likely_task:
+                    result = set_todays_tasks(primary=body)
+                    stats_line = get_stats_line()
+                    xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
+                    task_set_response = f"✅ TASK LOCKED IN! {xp_msg}\n\n🎯 PRIMARY: {body}\n\n{stats_line}\n\nI've got my eye on you. First check-in in a few hours. Now GO.\n\n-𓂀 Thoth"
+                    log_response(200, f"[Accountability] Task set: {body}", "/phone/incoming-message")
+                    
+        except Exception as e:
+            log_error(f"Accountability check error: {e}")
+        
+        # If we have a task-related response, return it directly
+        if task_set_response:
+            twiml_response = f"<Response><Message>{task_set_response}</Message></Response>"
+            return Response(
+                content=twiml_response,
+                media_type="application/xml",
+                status_code=200
+            )
+        
         # Process with AI (simplified version)
         try:
             # Use basic memory managers for SMS
