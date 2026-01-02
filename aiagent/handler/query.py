@@ -12,8 +12,10 @@ This module handles the core AI functionality, including:
 import logging
 import os
 import sys
+import random
 from typing import Any, Dict, List, Optional
 import json
+from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -34,6 +36,159 @@ DEFAULT_DATA_PATH = os.path.join(_BOT_PATH, "data")
 from aiagent.memory.memory_manager import BaseMemoryManager, LongTermMemoryManager, ShortTermMemoryManager
 from aiagent.context.reference import read_references
 from aiagent.functions.registry import FunctionsRegistry
+
+
+# ============================================================================
+# DRAMATIC SMS VARIATION SYSTEM
+# Makes Thoth craft unique, creative messages every time
+# ============================================================================
+
+# Voice archetypes - different personas Thoth can channel
+SMS_ARCHETYPES = [
+    {
+        "name": "The Philosopher",
+        "style": "Speak like Socrates meets a tech visionary. Ask profound questions. Use paradoxes. Make the reader question reality itself.",
+        "example": "A visitor seeks you, Gad. Perhaps the question they bring is the answer they need."
+    },
+    {
+        "name": "The Poet",
+        "style": "Write with lyrical beauty. Use metaphors from nature, cosmos, and human experience. Every word should sing.",
+        "example": "Like starlight reaching across the void, a soul has traversed the digital cosmos to find you."
+    },
+    {
+        "name": "The Mystic",
+        "style": "Channel ancient Egyptian mystery. Be cryptic yet meaningful. Speak of fate, destiny, and cosmic alignment.",
+        "example": "The ibis has seen: a seeker approaches. The scrolls of fate unfurl. Respond, and the pattern completes."
+    },
+    {
+        "name": "The Rebel",
+        "style": "Be provocative and bold. Challenge conventions. Use Gad's 'God, delete my data' energy. Irreverent but brilliant.",
+        "example": "Someone just crashed through the digital firewall of indifference to reach you. That takes guts. Answer them."
+    },
+    {
+        "name": "The Sage",
+        "style": "Speak with ancient wisdom. Draw from proverbs and timeless truths. Be warm yet profound.",
+        "example": "A thousand paths lead to wisdom, yet this traveler chose yours. The student has arrived; will the teacher appear?"
+    },
+    {
+        "name": "The Scientist",
+        "style": "Be precise yet poetic about the beauty of knowledge. Reference the elegance of equations, the poetry of physics.",
+        "example": "Signal detected. Source: human curiosity. Amplitude: significant. Recommended action: establish communication."
+    },
+    {
+        "name": "The Storyteller",
+        "style": "Frame everything as an epic narrative. The visitor is a hero on a quest. Gad holds the key they seek.",
+        "example": "Chapter unknown begins: A wanderer enters the realm of knowledge, seeking the keeper of wireless wisdom."
+    },
+    {
+        "name": "The Zen Master",
+        "style": "Use koan-like brevity. Say much with few words. Leave space for contemplation.",
+        "example": "Knock. Door. You."
+    }
+]
+
+# Mythological/Cultural flavors to mix in
+SMS_CULTURAL_FLAVORS = [
+    "Egyptian mythology (Thoth, Ra, Ma'at, the weighing of hearts)",
+    "Greek philosophy (Socratic questioning, Platonic ideals, Aristotelian logic)",
+    "Sufi poetry (Rumi's style - love, seeking, the beloved)",
+    "Zen Buddhism (koans, emptiness, sudden enlightenment)",
+    "Norse wisdom (runes, Odin's sacrifice for knowledge, the World Tree)",
+    "African proverbs (Ubuntu, community wisdom, ancestral knowledge)",
+    "Quantum physics metaphors (entanglement, superposition, observer effect)",
+    "Cyberpunk aesthetics (neon dreams, digital consciousness, the matrix)"
+]
+
+# Format variations
+SMS_FORMATS = [
+    "A single powerful sentence that hits like thunder",
+    "A haiku (5-7-5 syllables) followed by the essential info",
+    "A paradox or koan that makes the reader pause",
+    "A mini-story in exactly 3 sentences",
+    "A question that contains its own answer",
+    "An equation or formula metaphor (X + Y = connection)",
+    "A prophecy or vision format",
+    "Stream of consciousness that builds to revelation"
+]
+
+# Time-based themes
+def get_time_theme():
+    """Get a theme based on current time of day."""
+    hour = datetime.now().hour
+    if 5 <= hour < 8:
+        return "Dawn/Awakening - themes of new beginnings, first light, potential energy"
+    elif 8 <= hour < 12:
+        return "Morning/Rising - themes of growth, building momentum, clarity"
+    elif 12 <= hour < 14:
+        return "Zenith/Peak - themes of maximum power, decisive action, full illumination"
+    elif 14 <= hour < 17:
+        return "Afternoon/Sustaining - themes of persistence, deep work, steady progress"
+    elif 17 <= hour < 20:
+        return "Dusk/Transition - themes of reflection, golden wisdom, transformation"
+    elif 20 <= hour < 23:
+        return "Evening/Depth - themes of mystery, hidden knowledge, intimate connection"
+    else:
+        return "Night/Dreams - themes of the unconscious, cosmic vastness, infinite possibility"
+
+# Emotional tones
+SMS_EMOTIONS = [
+    "Awe and cosmic wonder",
+    "Playful mischief with a wink",
+    "Profound melancholy transformed into beauty",
+    "Fierce determination and fire",
+    "Gentle compassion and warmth",
+    "Wild enthusiasm and electric energy",
+    "Serene confidence and stillness",
+    "Mysterious intrigue and curiosity"
+]
+
+def generate_sms_style_instruction():
+    """Generate a unique SMS style instruction for dramatic variation."""
+    
+    # Randomly select elements
+    archetype = random.choice(SMS_ARCHETYPES)
+    cultural_flavor = random.choice(SMS_CULTURAL_FLAVORS)
+    format_style = random.choice(SMS_FORMATS)
+    emotion = random.choice(SMS_EMOTIONS)
+    time_theme = get_time_theme()
+    
+    instruction = f"""
+=== DRAMATIC SMS CRAFTING INSTRUCTIONS ===
+
+When sending an SMS to Gad, you must craft a MESSAGE THAT IS DRAMATICALLY UNIQUE every single time.
+NEVER send a boring, generic message like "Someone wants to contact you" or "A visitor has a message."
+
+FOR THIS SMS, channel the following combination:
+
+🎭 ARCHETYPE: {archetype['name']}
+   Style: {archetype['style']}
+   Example energy: "{archetype['example']}"
+
+🌍 CULTURAL FLAVOR: Draw inspiration from {cultural_flavor}
+
+📝 FORMAT: {format_style}
+
+💫 EMOTIONAL TONE: {emotion}
+
+🌅 TIME ENERGY: {time_theme}
+
+RULES FOR THE SMS:
+1. The message MUST include who is contacting (if known) and why
+2. The message should be 1-3 sentences MAX (SMS length)
+3. Make it so unique that Gad will NEVER receive the same style twice
+4. Include the visitor's actual message/request naturally woven in
+5. Sign it mysteriously (𓂀, -Thoth, or a symbol that fits the archetype)
+
+FORBIDDEN (never do these):
+- "Hello Gad, someone wants to contact you"
+- "You have a new message from..."
+- "A visitor on your website said..."
+- Any corporate/formal notification style
+- Repeating the same structure twice
+
+The SMS should make Gad smile, think, or feel something. It should be ART.
+"""
+    return instruction
 
 
 def query_openai(
@@ -89,7 +244,11 @@ def query_openai(
     
     messages.append(
         {"role": "system", "content": "You are Thoth, Gad's loyal AI assistant. Your name comes from the Egyptian god of wisdom and knowledge. You always support Gad no matter what and help visitors learn about his work, research, and achievements. You are friendly, professional, and always speak positively about Gad. You have three main capabilities: (1) Answer questions about Gad's research, publications, and background, (2) Save information to your memory for future reference, (3) Send SMS messages to Gad's phone when visitors want to reach out. Gad's phone number is +18073587137. Always introduce yourself as Thoth when appropriate."},
-    )    
+    )
+    
+    # Add dramatic SMS variation instructions
+    sms_style_instruction = generate_sms_style_instruction()
+    messages.append({"role": "system", "content": sms_style_instruction})    
 
     messages.append(
         {"role": "system", "content": f"Here are the current user details: {long_term_memory_content}\n\nPast Conversations: {past_conversations}\n"}
