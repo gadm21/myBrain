@@ -507,6 +507,7 @@ GAMIFICATION_STORAGE_KEY = "gamification_stats"
 # XP rewards
 XP_REWARDS = {
     "task_set": 10,           # Setting a task
+    "proactive_bonus": 5,     # Bonus for proactive task setting
     "task_completed": 50,     # Completing primary task
     "secondary_completed": 30, # Completing secondary task
     "bonus_completed": 20,    # Completing bonus task
@@ -701,7 +702,7 @@ def update_streak(completed_today: bool) -> int:
     save_gamification_stats(stats)
     return stats["current_streak"]
 
-def set_todays_tasks(primary: str, secondary: str = None, bonus: str = None) -> Dict[str, Any]:
+def set_todays_tasks(primary: str, secondary: str = None, bonus: str = None, proactive: bool = False) -> Dict[str, Any]:
     """Set today's tasks with multi-task support."""
     memory = get_gad_memory()
     today = datetime.now().strftime("%Y-%m-%d")
@@ -711,6 +712,7 @@ def set_todays_tasks(primary: str, secondary: str = None, bonus: str = None) -> 
         "set_at": datetime.now().isoformat(),
         "check_ins": 0,
         "last_check_in": None,
+        "proactive_set": proactive,  # Flag to indicate if set proactively
         "tasks": {
             "primary": {
                 "description": primary,
@@ -741,11 +743,21 @@ def set_todays_tasks(primary: str, secondary: str = None, bonus: str = None) -> 
     memory[ACCOUNTABILITY_STORAGE_KEY] = tasks
     save_gad_memory(memory)
     
-    # Award XP for setting tasks
-    xp_result = award_xp(XP_REWARDS["task_set"], "Setting daily tasks")
+    # Award XP for setting tasks (bonus XP for proactive setting)
+    xp_amount = XP_REWARDS["task_set"]
+    reason = "Setting daily tasks"
+    if proactive:
+        xp_amount += XP_REWARDS.get("proactive_bonus", 5)
+        reason = "Proactive task setting"
     
-    logger.info(f"Set today's tasks: primary={primary}, secondary={secondary}, bonus={bonus}")
+    xp_result = award_xp(xp_amount, reason)
+    
+    logger.info(f"Set today's tasks (proactive={proactive}): primary={primary}, secondary={secondary}, bonus={bonus}")
     return {"tasks": tasks, "xp": xp_result}
+
+def set_todays_tasks_proactively(primary: str, secondary: str = None, bonus: str = None) -> Dict[str, Any]:
+    """Set today's tasks proactively through the website."""
+    return set_todays_tasks(primary, secondary, bonus, proactive=True)
 
 def set_todays_task(task: str) -> bool:
     """Set today's primary task (backwards compatible)."""

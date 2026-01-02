@@ -2,8 +2,15 @@
 
 from fastapi import APIRouter
 from typing import Dict, Any, List
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/data", tags=["data"])
+
+
+class TaskSetRequest(BaseModel):
+    primary: str
+    secondary: str = None
+    bonus: str = None
 
 
 @router.get(
@@ -68,4 +75,88 @@ async def get_contributions(days: int = 365) -> Dict[str, Any]:
             "success": False,
             "error": str(e),
             "contributions": []
+        }
+
+
+@router.post(
+    "/tasks/set",
+    summary="Set today's tasks proactively",
+    description="Allows setting primary, secondary, and bonus tasks before Thoth asks"
+)
+async def set_tasks_proactively(task_request: TaskSetRequest) -> Dict[str, Any]:
+    """Set today's tasks proactively through the website."""
+    try:
+        from server.periodic_intelligence import (
+            set_todays_tasks_proactively, get_todays_task, get_stats_line
+        )
+        
+        # Check if tasks are already set for today
+        current_task = get_todays_task()
+        if current_task:
+            return {
+                "success": False,
+                "error": "Tasks already set for today. Update progress or complete existing tasks.",
+                "current_tasks": current_task
+            }
+        
+        # Set the new tasks
+        result = set_todays_tasks_proactively(
+            primary=task_request.primary,
+            secondary=task_request.secondary,
+            bonus=task_request.bonus
+        )
+        
+        if result:
+            stats_line = get_stats_line()
+            return {
+                "success": True,
+                "message": "Tasks set successfully!",
+                "tasks": result["tasks"],
+                "xp_awarded": result.get("xp", {}).get("xp_awarded", 0),
+                "stats_line": stats_line
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Failed to set tasks"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.get(
+    "/tasks/current",
+    summary="Get today's current tasks",
+    description="Returns the tasks set for today, if any"
+)
+async def get_current_tasks() -> Dict[str, Any]:
+    """Get today's current task status."""
+    try:
+        from server.periodic_intelligence import get_todays_task
+        
+        current_task = get_todays_task()
+        
+        if current_task:
+            return {
+                "success": True,
+                "tasks": current_task,
+                "has_tasks": True
+            }
+        else:
+            return {
+                "success": True,
+                "tasks": None,
+                "has_tasks": False,
+                "message": "No tasks set for today yet"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "tasks": None
         }
