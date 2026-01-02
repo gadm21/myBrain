@@ -13,6 +13,15 @@ class TaskSetRequest(BaseModel):
     bonus: str = None
 
 
+class TaskProgressRequest(BaseModel):
+    task_type: str  # "primary", "secondary", or "bonus"
+    progress: int   # 0-100
+
+
+class TaskCompleteRequest(BaseModel):
+    task_type: str  # "primary", "secondary", or "bonus"
+
+
 @router.get(
     "/gamification",
     summary="Get gamification stats and contribution data",
@@ -159,4 +168,168 @@ async def get_current_tasks() -> Dict[str, Any]:
             "success": False,
             "error": str(e),
             "tasks": None
+        }
+
+
+@router.post(
+    "/tasks/progress",
+    summary="Update task progress",
+    description="Update progress on a specific task (0-100)"
+)
+async def update_task_progress(request: TaskProgressRequest) -> Dict[str, Any]:
+    """Update progress on a specific task."""
+    try:
+        from server.periodic_intelligence import (
+            update_task_progress, get_todays_task, get_stats_line
+        )
+        
+        # Validate task type
+        if request.task_type not in ["primary", "secondary", "bonus"]:
+            return {
+                "success": False,
+                "error": "Invalid task type. Must be 'primary', 'secondary', or 'bonus'"
+            }
+        
+        # Validate progress
+        if not (0 <= request.progress <= 100):
+            return {
+                "success": False,
+                "error": "Progress must be between 0 and 100"
+            }
+        
+        result = update_task_progress(request.task_type, request.progress)
+        
+        if "error" not in result:
+            stats_line = get_stats_line()
+            return {
+                "success": True,
+                "message": f"Progress updated to {request.progress}%",
+                "task_type": result["task_type"],
+                "old_progress": result["old_progress"],
+                "new_progress": result["new_progress"],
+                "xp_awarded": result.get("xp", {}).get("xp_awarded", 0),
+                "stats_line": stats_line
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"]
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.post(
+    "/tasks/complete",
+    summary="Mark task as completed",
+    description="Mark a task as completed and award XP"
+)
+async def complete_task(request: TaskCompleteRequest) -> Dict[str, Any]:
+    """Mark a task as completed."""
+    try:
+        from server.periodic_intelligence import (
+            complete_task, get_todays_task, get_stats_line
+        )
+        
+        # Validate task type
+        if request.task_type not in ["primary", "secondary", "bonus"]:
+            return {
+                "success": False,
+                "error": "Invalid task type. Must be 'primary', 'secondary', or 'bonus'"
+            }
+        
+        result = complete_task(request.task_type)
+        
+        if "error" not in result:
+            stats_line = get_stats_line()
+            xp_info = result.get("xp", {})
+            xp_total = xp_info.get("xp_awarded", 0)
+            
+            return {
+                "success": True,
+                "message": f"🎉 {request.task_type.upper()} TASK COMPLETE!",
+                "task_type": result["task_type"],
+                "task_description": result["task_description"],
+                "xp_awarded": xp_total,
+                "leveled_up": xp_info.get("leveled_up", False),
+                "stats_line": stats_line
+            }
+        else:
+            return {
+                "success": False,
+                "error": result["error"]
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.post(
+    "/tasks/modify",
+    summary="Modify existing task",
+    description="Update the description of an existing task"
+)
+async def modify_task(request: TaskSetRequest) -> Dict[str, Any]:
+    """Modify an existing task's description."""
+    try:
+        from server.periodic_intelligence import get_todays_task
+        
+        current_task = get_todays_task()
+        if not current_task:
+            return {
+                "success": False,
+                "error": "No tasks set for today. Create tasks first."
+            }
+        
+        # Update task descriptions
+        tasks = current_task.get("tasks", {})
+        
+        if request.primary and "primary" in tasks:
+            tasks["primary"]["description"] = request.primary
+        
+        if request.secondary and "secondary" in tasks:
+            tasks["secondary"]["description"] = request.secondary
+        elif request.secondary and "secondary" not in tasks:
+            # Add new secondary task
+            tasks["secondary"] = {
+                "description": request.secondary,
+                "progress": 0,
+                "completed": False,
+                "completed_at": None
+            }
+        
+        if request.bonus and "bonus" in tasks:
+            tasks["bonus"]["description"] = request.bonus
+        elif request.bonus and "bonus" not in tasks:
+            # Add new bonus task
+            tasks["bonus"] = {
+                "description": request.bonus,
+                "progress": 0,
+                "completed": False,
+                "completed_at": None
+            }
+        
+        # Save updated tasks
+        from server.periodic_intelligence import save_gad_memory, get_gad_memory, ACCOUNTABILITY_STORAGE_KEY
+        memory = get_gad_memory()
+        memory[ACCOUNTABILITY_STORAGE_KEY] = current_task
+        save_gad_memory(memory)
+        
+        return {
+            "success": True,
+            "message": "Tasks updated successfully",
+            "tasks": current_task
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
         }
