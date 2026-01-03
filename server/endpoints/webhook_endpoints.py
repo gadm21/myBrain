@@ -165,7 +165,7 @@ async def handle_twilio_incoming_message(
                     task_set_response = f"🎉 VICTORY!\n\nTask: \"{task}\"\nStatus: CRUSHED ✓\n\nYou absolute legend.\n\n-𓂀 Thoth"
                     log_response(200, f"[Accountability] Task completed: {task}", "/phone/incoming-message")
             
-            # Check for multi-task format: "task1 | task2 | task3"
+            # Check for multi-task format: "task1 | task2 | task3" - ALWAYS allow setting new tasks with pipe
             if not task_set_response and "|" in body and not ctx["is_night"]:
                 parts = [p.strip() for p in body.split("|")]
                 primary = parts[0] if len(parts) > 0 else None
@@ -173,6 +173,8 @@ async def handle_twilio_incoming_message(
                 bonus = parts[2] if len(parts) > 2 else None
                 
                 if primary:
+                    # Allow updating/replacing existing tasks
+                    replacing = current_task is not None
                     result = set_todays_tasks(primary, secondary, bonus)
                     stats_line = get_stats_line()
                     
@@ -183,24 +185,43 @@ async def handle_twilio_incoming_message(
                         tasks_display += f"\n⭐ BONUS: {bonus}"
                     
                     xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
-                    task_set_response = f"✅ TASKS LOCKED IN! {xp_msg}\n\n{tasks_display}\n\n{stats_line}\n\nI've got my eye on you. Now GO.\n\n-𓂀 Thoth"
-                    log_response(200, f"[Accountability] Multi-tasks set", "/phone/incoming-message")
+                    action_word = "UPDATED" if replacing else "LOCKED IN"
+                    task_set_response = f"✅ TASKS {action_word}! {xp_msg}\n\n{tasks_display}\n\n{stats_line}\n\nI've got my eye on you. Now GO.\n\n-𓂀 Thoth"
+                    log_response(200, f"[Accountability] Multi-tasks set (replacing={replacing})", "/phone/incoming-message")
             
-            # Single task (no pipe separator)
-            if not task_set_response and not current_task and not ctx["is_night"]:
-                is_likely_task = (
-                    len(body) > 5 and
-                    not body.endswith('?') and
-                    not body_lower.startswith(('who', 'what', 'when', 'where', 'why', 'how', 'did', 'is', 'are', 'can')) and
-                    not body_lower in ('yes', 'no', 'ok', 'okay', 'done', 'thanks', 'thank you')
-                )
+            # Single task (no pipe separator) - check for explicit task-setting keywords
+            task_set_keywords = ['my task', 'today\'s task', 'set task', 'new task', 'task:', 'primary:', 'working on']
+            is_explicit_task_set = any(kw in body_lower for kw in task_set_keywords)
+            
+            if not task_set_response and not ctx["is_night"]:
+                # Allow setting if no task exists OR if user explicitly wants to set a new task
+                should_set_task = not current_task or is_explicit_task_set
                 
-                if is_likely_task:
-                    result = set_todays_tasks(primary=body)
-                    stats_line = get_stats_line()
-                    xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
-                    task_set_response = f"✅ TASK LOCKED IN! {xp_msg}\n\n🎯 PRIMARY: {body}\n\n{stats_line}\n\nI've got my eye on you. First check-in in a few hours. Now GO.\n\n-𓂀 Thoth"
-                    log_response(200, f"[Accountability] Task set: {body}", "/phone/incoming-message")
+                if should_set_task:
+                    is_likely_task = (
+                        len(body) > 5 and
+                        not body.endswith('?') and
+                        not body_lower.startswith(('who', 'what', 'when', 'where', 'why', 'how', 'did', 'is', 'are', 'can')) and
+                        not body_lower in ('yes', 'no', 'ok', 'okay', 'done', 'thanks', 'thank you')
+                    )
+                    
+                    if is_likely_task or is_explicit_task_set:
+                        # Clean up the task text if it has keywords
+                        task_text = body
+                        for kw in ['my task is', 'today\'s task is', 'set task:', 'new task:', 'task:', 'primary:', 'working on']:
+                            if kw in body_lower:
+                                idx = body_lower.find(kw) + len(kw)
+                                task_text = body[idx:].strip()
+                                break
+                        
+                        if len(task_text) > 3:  # Ensure we have meaningful task text
+                            replacing = current_task is not None
+                            result = set_todays_tasks(primary=task_text)
+                            stats_line = get_stats_line()
+                            xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
+                            action_word = "UPDATED" if replacing else "LOCKED IN"
+                            task_set_response = f"✅ TASK {action_word}! {xp_msg}\n\n🎯 PRIMARY: {task_text}\n\n{stats_line}\n\nI've got my eye on you. First check-in in a few hours. Now GO.\n\n-𓂀 Thoth"
+                            log_response(200, f"[Accountability] Task set (replacing={replacing}): {task_text}", "/phone/incoming-message")
                     
         except Exception as e:
             log_error(f"Accountability check error: {e}")
@@ -247,11 +268,51 @@ async def handle_twilio_incoming_message(
             except Exception as e:
                 log_error(f"Error loading SMS history: {e}")
             
-            # Build context with SMS history
+            # Get current task context for AI
+            task_context = ""
+            try:
+                from server.periodic_intelligence import get_todays_task, get_gamification_stats, get_level_info
+                current_task_data = get_todays_task()
+                if current_task_data:
+                    tasks = current_task_data.get("tasks", {})
+                    if tasks:
+                        task_context = "\n\nGAD'S CURRENT TASKS FOR TODAY:\n"
+                        for task_type in ["primary", "secondary", "bonus"]:
+                            if task_type in tasks:
+                                t = tasks[task_type]
+                                status = "✅ COMPLETED" if t.get("completed") else f"{t.get('progress', 0)}% progress"
+                                task_context += f"- {task_type.upper()}: {t.get('description', 'Unknown')} ({status})\n"
+                        task_context += f"Set at: {current_task_data.get('set_at', 'Unknown')}\n"
+                        task_context += f"Check-ins today: {current_task_data.get('check_ins', 0)}\n"
+                    elif current_task_data.get("task"):
+                        # Old format
+                        task_context = f"\n\nGAD'S CURRENT TASK: {current_task_data.get('task')}\n"
+                else:
+                    task_context = "\n\nNO TASK SET FOR TODAY - Gad hasn't told you what he's working on yet.\n"
+                
+                # Add gamification stats
+                stats = get_gamification_stats()
+                level_info = get_level_info(stats.get("total_xp", 0))
+                task_context += f"\nGAMIFICATION: Level {level_info['level']} ({level_info['name']}) | {stats.get('total_xp', 0)} XP | {stats.get('current_streak', 0)} day streak\n"
+            except Exception as e:
+                log_error(f"Error loading task context: {e}")
+            
+            # Build context with SMS history AND task context
             sms_context = {
                 "source": "sms_reply",
                 "sms_history": sms_history_context,
-                "instruction": "Gad is replying to an SMS. Check the SMS history above to see who requested the last message and why it was sent. If he asks who sent a message, tell him based on the history."
+                "task_context": task_context,
+                "instruction": """You are Thoth, Gad's AI accountability partner. You communicate via SMS.
+
+IMPORTANT CAPABILITIES:
+1. You KNOW Gad's current tasks - check the TASK CONTEXT above
+2. You can remind him of his tasks when he asks
+3. You track his progress and celebrate completions
+4. You send periodic check-ins to keep him accountable
+
+If Gad asks about his tasks, tell him what they are from the context.
+If he asks who sent a message, check the SMS history.
+Be encouraging but direct. Use the 𓂀 Thoth signature."""
             }
             
             ai_response = query_openai(
