@@ -578,10 +578,12 @@ def get_gad_memory() -> Dict[str, Any]:
     """Get Gad's full memory dict."""
     from server.db import SessionLocal, User, File as DBFile
     
+    logger.info("[TASK DEBUG] get_gad_memory() called")
     db = SessionLocal()
     try:
         gad_user = db.query(User).filter(User.username == "gad").first()
         if not gad_user:
+            logger.warning("[TASK DEBUG] No 'gad' user found in database")
             return {}
             
         stm_file = db.query(DBFile).filter(
@@ -590,12 +592,86 @@ def get_gad_memory() -> Dict[str, Any]:
         ).first()
         
         if not stm_file or not stm_file.content:
+            logger.warning("[TASK DEBUG] No short_term_memory.json file found or empty")
+            return {}
+        
+        memory = json.loads(stm_file.content.decode("utf-8"))
+        logger.info(f"[TASK DEBUG] Memory loaded successfully. Keys: {list(memory.keys())}")
+        return memory
+    except Exception as e:
+        logger.error(f"[TASK DEBUG] Error getting memory: {e}", exc_info=True)
+        return {}
+    finally:
+        db.close()
+
+def get_daily_tasks() -> Dict[str, Any]:
+    """Get daily tasks from separate daily_tasks.json file."""
+    from server.db import SessionLocal, User, File as DBFile
+    
+    logger.info("[TASK DEBUG] get_daily_tasks() called")
+    db = SessionLocal()
+    try:
+        gad_user = db.query(User).filter(User.username == "gad").first()
+        if not gad_user:
+            logger.warning("[TASK DEBUG] No 'gad' user found in database")
             return {}
             
-        return json.loads(stm_file.content.decode("utf-8"))
+        tasks_file = db.query(DBFile).filter(
+            DBFile.userId == gad_user.userId,
+            DBFile.filename == "daily_tasks.json"
+        ).first()
+        
+        if not tasks_file or not tasks_file.content:
+            logger.warning("[TASK DEBUG] No daily_tasks.json file found or empty")
+            return {}
+        
+        tasks = json.loads(tasks_file.content.decode("utf-8"))
+        logger.info(f"[TASK DEBUG] Daily tasks loaded: {tasks}")
+        return tasks
     except Exception as e:
-        logger.error(f"Error getting memory: {e}")
+        logger.error(f"[TASK DEBUG] Error getting daily tasks: {e}", exc_info=True)
         return {}
+    finally:
+        db.close()
+
+def save_daily_tasks(tasks: Dict[str, Any]):
+    """Save daily tasks to separate daily_tasks.json file."""
+    from server.db import SessionLocal, User, File as DBFile
+    
+    logger.info(f"[TASK DEBUG] save_daily_tasks() called. Tasks: {tasks}")
+    
+    db = SessionLocal()
+    try:
+        gad_user = db.query(User).filter(User.username == "gad").first()
+        if not gad_user:
+            logger.error("[TASK DEBUG] Cannot save - no 'gad' user found")
+            return
+            
+        tasks_file = db.query(DBFile).filter(
+            DBFile.userId == gad_user.userId,
+            DBFile.filename == "daily_tasks.json"
+        ).first()
+        
+        encoded = json.dumps(tasks).encode("utf-8")
+        if tasks_file:
+            logger.info("[TASK DEBUG] Updating existing daily_tasks.json file")
+            tasks_file.content = encoded
+            tasks_file.size = len(encoded)
+        else:
+            logger.info("[TASK DEBUG] Creating new daily_tasks.json file")
+            new_file = DBFile(
+                userId=gad_user.userId,
+                filename="daily_tasks.json",
+                content=encoded,
+                content_type="application/json",
+            )
+            new_file.size = len(encoded)
+            db.add(new_file)
+        db.commit()
+        logger.info("[TASK DEBUG] Daily tasks saved successfully")
+    except Exception as e:
+        logger.error(f"[TASK DEBUG] Error saving daily tasks: {e}", exc_info=True)
+        db.rollback()
     finally:
         db.close()
 
@@ -603,10 +679,15 @@ def save_gad_memory(memory: Dict[str, Any]):
     """Save Gad's full memory dict."""
     from server.db import SessionLocal, User, File as DBFile
     
+    logger.info(f"[TASK DEBUG] save_gad_memory() called. Keys being saved: {list(memory.keys())}")
+    if ACCOUNTABILITY_STORAGE_KEY in memory:
+        logger.info(f"[TASK DEBUG] Saving accountability data: {memory[ACCOUNTABILITY_STORAGE_KEY]}")
+    
     db = SessionLocal()
     try:
         gad_user = db.query(User).filter(User.username == "gad").first()
         if not gad_user:
+            logger.error("[TASK DEBUG] Cannot save - no 'gad' user found")
             return
             
         stm_file = db.query(DBFile).filter(
@@ -616,9 +697,11 @@ def save_gad_memory(memory: Dict[str, Any]):
         
         encoded = json.dumps(memory).encode("utf-8")
         if stm_file:
+            logger.info("[TASK DEBUG] Updating existing short_term_memory.json file")
             stm_file.content = encoded
             stm_file.size = len(encoded)
         else:
+            logger.info("[TASK DEBUG] Creating new short_term_memory.json file")
             new_file = DBFile(
                 userId=gad_user.userId,
                 filename="short_term_memory.json",
@@ -628,8 +711,10 @@ def save_gad_memory(memory: Dict[str, Any]):
             new_file.size = len(encoded)
             db.add(new_file)
         db.commit()
+        logger.info("[TASK DEBUG] Memory saved successfully")
     except Exception as e:
-        logger.error(f"Error saving memory: {e}")
+        logger.error(f"[TASK DEBUG] Error saving memory: {e}", exc_info=True)
+        db.rollback()
     finally:
         db.close()
 
@@ -704,15 +789,16 @@ def update_streak(completed_today: bool) -> int:
 
 def set_todays_tasks(primary: str, secondary: str = None, bonus: str = None, proactive: bool = False) -> Dict[str, Any]:
     """Set today's tasks with multi-task support."""
-    memory = get_gad_memory()
+    logger.info(f"[TASK DEBUG] set_todays_tasks() called - primary: '{primary}', secondary: '{secondary}', bonus: '{bonus}', proactive: {proactive}")
     today = datetime.now().strftime("%Y-%m-%d")
+    logger.info(f"[TASK DEBUG] Setting tasks for date: {today}")
     
     tasks = {
         "date": today,
         "set_at": datetime.now().isoformat(),
         "check_ins": 0,
         "last_check_in": None,
-        "proactive_set": proactive,  # Flag to indicate if set proactively
+        "proactive_set": proactive,
         "tasks": {
             "primary": {
                 "description": primary,
@@ -740,8 +826,11 @@ def set_todays_tasks(primary: str, secondary: str = None, bonus: str = None, pro
             "completed_at": None
         }
     
-    memory[ACCOUNTABILITY_STORAGE_KEY] = tasks
-    save_gad_memory(memory)
+    logger.info(f"[TASK DEBUG] Tasks object created: {tasks}")
+    save_daily_tasks(tasks)
+    
+    # Update contribution graph - mark day as having tasks set (red = not done yet)
+    update_contribution_for_tasks_set(today)
     
     # Award XP for setting tasks (bonus XP for proactive setting)
     xp_amount = XP_REWARDS["task_set"]
@@ -752,7 +841,8 @@ def set_todays_tasks(primary: str, secondary: str = None, bonus: str = None, pro
     
     xp_result = award_xp(xp_amount, reason)
     
-    logger.info(f"Set today's tasks (proactive={proactive}): primary={primary}, secondary={secondary}, bonus={bonus}")
+    logger.info(f"[TASK DEBUG] ✅ Tasks set successfully (proactive={proactive}): primary={primary}, secondary={secondary}, bonus={bonus}")
+    logger.info(f"[TASK DEBUG] XP awarded: {xp_result}")
     return {"tasks": tasks, "xp": xp_result}
 
 def set_todays_tasks_proactively(primary: str, secondary: str = None, bonus: str = None) -> Dict[str, Any]:
@@ -766,30 +856,37 @@ def set_todays_task(task: str) -> bool:
 
 def get_todays_task() -> Optional[Dict[str, Any]]:
     """Retrieve today's accountability data."""
-    memory = get_gad_memory()
-    accountability = memory.get(ACCOUNTABILITY_STORAGE_KEY, {})
+    logger.info("[TASK DEBUG] get_todays_task() called")
+    tasks = get_daily_tasks()
     
     today = datetime.now().strftime("%Y-%m-%d")
-    if accountability.get("date") == today:
-        return accountability
+    logger.info(f"[TASK DEBUG] Today's date: {today}")
+    logger.info(f"[TASK DEBUG] Tasks data: {tasks}")
+    
+    if tasks.get("date") == today:
+        logger.info(f"[TASK DEBUG] ✅ Found tasks for today: {tasks}")
+        return tasks
+    else:
+        logger.warning(f"[TASK DEBUG] ❌ No tasks for today. Tasks date: {tasks.get('date')}")
     return None
 
 def update_task_progress(task_type: str, progress: int) -> Dict[str, Any]:
     """Update progress on a specific task (0-100)."""
-    memory = get_gad_memory()
-    accountability = memory.get(ACCOUNTABILITY_STORAGE_KEY, {})
+    tasks = get_daily_tasks()
     
-    if not accountability or accountability.get("date") != datetime.now().strftime("%Y-%m-%d"):
+    if not tasks or tasks.get("date") != datetime.now().strftime("%Y-%m-%d"):
         return {"error": "No tasks set for today"}
     
-    if task_type not in accountability.get("tasks", {}):
+    if task_type not in tasks.get("tasks", {}):
         return {"error": f"No {task_type} task set"}
     
-    old_progress = accountability["tasks"][task_type]["progress"]
-    accountability["tasks"][task_type]["progress"] = min(100, max(0, progress))
+    old_progress = tasks["tasks"][task_type]["progress"]
+    tasks["tasks"][task_type]["progress"] = min(100, max(0, progress))
     
-    memory[ACCOUNTABILITY_STORAGE_KEY] = accountability
-    save_gad_memory(memory)
+    save_daily_tasks(tasks)
+    
+    # Update contribution graph
+    update_contribution_for_progress(tasks)
     
     # Award XP for progress updates (only if meaningful progress)
     xp_result = None
@@ -805,26 +902,27 @@ def update_task_progress(task_type: str, progress: int) -> Dict[str, Any]:
 
 def complete_task(task_type: str) -> Dict[str, Any]:
     """Mark a task as completed and award XP."""
-    memory = get_gad_memory()
-    accountability = memory.get(ACCOUNTABILITY_STORAGE_KEY, {})
+    tasks = get_daily_tasks()
     today = datetime.now().strftime("%Y-%m-%d")
     
-    if not accountability or accountability.get("date") != today:
+    if not tasks or tasks.get("date") != today:
         return {"error": "No tasks set for today"}
     
-    if task_type not in accountability.get("tasks", {}):
+    if task_type not in tasks.get("tasks", {}):
         return {"error": f"No {task_type} task set"}
     
-    if accountability["tasks"][task_type]["completed"]:
+    if tasks["tasks"][task_type]["completed"]:
         return {"error": f"{task_type} task already completed"}
     
     # Mark as completed
-    accountability["tasks"][task_type]["completed"] = True
-    accountability["tasks"][task_type]["progress"] = 100
-    accountability["tasks"][task_type]["completed_at"] = datetime.now().isoformat()
+    tasks["tasks"][task_type]["completed"] = True
+    tasks["tasks"][task_type]["progress"] = 100
+    tasks["tasks"][task_type]["completed_at"] = datetime.now().isoformat()
     
-    memory[ACCOUNTABILITY_STORAGE_KEY] = accountability
-    save_gad_memory(memory)
+    save_daily_tasks(tasks)
+    
+    # Update contribution graph
+    update_contribution_for_progress(tasks)
     
     # Award XP based on task type
     xp_key = f"{task_type}_completed" if task_type != "primary" else "task_completed"
@@ -896,13 +994,52 @@ def get_daily_summary() -> Dict[str, Any]:
     return summary
 
 def save_accountability_state(state: Dict[str, Any]):
-    """Save accountability state to Gad's memory."""
-    memory = get_gad_memory()
-    memory[ACCOUNTABILITY_STORAGE_KEY] = state
-    save_gad_memory(memory)
+    """Save accountability state to daily tasks."""
+    save_daily_tasks(state)
+
+def update_contribution_for_tasks_set(date: str):
+    """Update contribution data when tasks are set (mark as red/not done)."""
+    stats = get_gamification_stats()
+    history = stats.get("daily_history", {})
+    
+    if date not in history:
+        history[date] = {"xp_earned": 0, "tasks": [], "completed": False, "tasks_set": True}
+    else:
+        history[date]["tasks_set"] = True
+    
+    stats["daily_history"] = history
+    save_gamification_stats(stats)
+    logger.info(f"[TASK DEBUG] Contribution updated for tasks set on {date}")
+
+def update_contribution_for_progress(tasks: Dict[str, Any]):
+    """Update contribution data based on task completion status."""
+    date = tasks.get("date")
+    if not date:
+        return
+    
+    stats = get_gamification_stats()
+    history = stats.get("daily_history", {})
+    
+    # Calculate completion status
+    task_list = tasks.get("tasks", {})
+    total_tasks = len(task_list)
+    completed_tasks = sum(1 for t in task_list.values() if t.get("completed", False))
+    
+    # Update history
+    if date not in history:
+        history[date] = {"xp_earned": 0, "tasks": [], "completed": False}
+    
+    history[date]["tasks_set"] = True
+    history[date]["total_tasks"] = total_tasks
+    history[date]["completed_tasks"] = completed_tasks
+    history[date]["all_completed"] = (completed_tasks == total_tasks and total_tasks > 0)
+    
+    stats["daily_history"] = history
+    save_gamification_stats(stats)
+    logger.info(f"[TASK DEBUG] Contribution updated: {completed_tasks}/{total_tasks} tasks completed on {date}")
 
 def get_contribution_data(days: int = 365) -> List[Dict[str, Any]]:
-    """Get contribution data for the GitHub-style grid."""
+    """Get contribution data for the GitHub-style grid with task status colors."""
     stats = get_gamification_stats()
     history = stats.get("daily_history", {})
     
@@ -913,11 +1050,35 @@ def get_contribution_data(days: int = 365) -> List[Dict[str, Any]]:
         date = (today - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
         day_data = history.get(date, {})
         
+        # Determine color/status
+        # Red (level -2): Tasks set but not completed
+        # Blue gradient (level 1-4): Tasks completed (gradient based on number)
+        # Mixed (level -3): Some tasks done, some not
+        # Gray (level 0): No tasks set
+        
+        tasks_set = day_data.get("tasks_set", False)
+        total_tasks = day_data.get("total_tasks", 0)
+        completed_tasks = day_data.get("completed_tasks", 0)
+        all_completed = day_data.get("all_completed", False)
+        
+        if not tasks_set:
+            level = 0  # Gray - no tasks
+        elif all_completed:
+            # Blue gradient based on number of tasks completed
+            level = min(4, max(1, completed_tasks))  # 1-4 for blue gradient
+        elif completed_tasks > 0:
+            level = -3  # Mixed - some done, some not (blue + red)
+        else:
+            level = -2  # Red - tasks set but none completed
+        
         contributions.append({
             "date": date,
             "xp_earned": day_data.get("xp_earned", 0),
-            "completed": day_data.get("completed", False),
-            "level": min(4, day_data.get("xp_earned", 0) // 25)  # 0-4 intensity levels
+            "completed": all_completed,
+            "level": level,
+            "tasks_set": tasks_set,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks
         })
     
     return contributions

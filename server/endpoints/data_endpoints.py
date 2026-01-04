@@ -317,10 +317,8 @@ async def modify_task(request: TaskSetRequest) -> Dict[str, Any]:
             }
         
         # Save updated tasks
-        from server.periodic_intelligence import save_gad_memory, get_gad_memory, ACCOUNTABILITY_STORAGE_KEY
-        memory = get_gad_memory()
-        memory[ACCOUNTABILITY_STORAGE_KEY] = current_task
-        save_gad_memory(memory)
+        from server.periodic_intelligence import save_daily_tasks
+        save_daily_tasks(current_task)
         
         return {
             "success": True,

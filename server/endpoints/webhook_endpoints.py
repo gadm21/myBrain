@@ -109,8 +109,10 @@ async def handle_twilio_incoming_message(
                 get_gamification_stats, get_level_info
             )
             
+            log_response(200, f"[TASK DEBUG] Processing SMS body: '{body}'", "/phone/incoming-message")
             ctx = get_time_context()
             current_task = get_todays_task()
+            log_response(200, f"[TASK DEBUG] Current task retrieved: {current_task}", "/phone/incoming-message")
             body_lower = body.lower().strip()
             
             # Check for progress updates (number 0-100)
@@ -167,15 +169,19 @@ async def handle_twilio_incoming_message(
             
             # Check for multi-task format: "task1 | task2 | task3" - ALWAYS allow setting new tasks with pipe
             if not task_set_response and "|" in body and not ctx["is_night"]:
+                log_response(200, "[TASK DEBUG] Detected pipe separator - multi-task format", "/phone/incoming-message")
                 parts = [p.strip() for p in body.split("|")]
                 primary = parts[0] if len(parts) > 0 else None
                 secondary = parts[1] if len(parts) > 1 else None
                 bonus = parts[2] if len(parts) > 2 else None
+                log_response(200, f"[TASK DEBUG] Parsed tasks - primary: '{primary}', secondary: '{secondary}', bonus: '{bonus}'", "/phone/incoming-message")
                 
                 if primary:
                     # Allow updating/replacing existing tasks
                     replacing = current_task is not None
+                    log_response(200, f"[TASK DEBUG] Setting tasks (replacing={replacing})", "/phone/incoming-message")
                     result = set_todays_tasks(primary, secondary, bonus)
+                    log_response(200, f"[TASK DEBUG] set_todays_tasks result: {result}", "/phone/incoming-message")
                     stats_line = get_stats_line()
                     
                     tasks_display = f"🎯 PRIMARY: {primary}"
@@ -187,10 +193,16 @@ async def handle_twilio_incoming_message(
                     xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
                     action_word = "UPDATED" if replacing else "LOCKED IN"
                     task_set_response = f"✅ TASKS {action_word}! {xp_msg}\n\n{tasks_display}\n\n{stats_line}\n\nI've got my eye on you. Now GO.\n\n-𓂀 Thoth"
-                    log_response(200, f"[Accountability] Multi-tasks set (replacing={replacing})", "/phone/incoming-message")
+                    log_response(200, f"[TASK DEBUG] Multi-tasks set successfully (replacing={replacing}). Response: {task_set_response}", "/phone/incoming-message")
             
             # Single task (no pipe separator) - check for explicit task-setting keywords
-            task_set_keywords = ['my task', 'today\'s task', 'set task', 'new task', 'task:', 'primary:', 'working on']
+            # Enhanced natural language patterns
+            task_set_keywords = [
+                'my task', 'today\'s task', 'set task', 'new task', 'task:', 'primary:', 'working on',
+                'my tasks today are', 'tasks today are', 'today i need to', 'today i will',
+                'my tasks are', 'tasks are', 'i need to', 'i will', 'planning to',
+                'my goals today', 'today\'s goals', 'my plan is'
+            ]
             is_explicit_task_set = any(kw in body_lower for kw in task_set_keywords)
             
             if not task_set_response and not ctx["is_night"]:
@@ -206,9 +218,15 @@ async def handle_twilio_incoming_message(
                     )
                     
                     if is_likely_task or is_explicit_task_set:
-                        # Clean up the task text if it has keywords
+                        # Clean up the task text if it has keywords - enhanced patterns
                         task_text = body
-                        for kw in ['my task is', 'today\'s task is', 'set task:', 'new task:', 'task:', 'primary:', 'working on']:
+                        cleanup_keywords = [
+                            'my tasks today are', 'tasks today are', 'my tasks are', 'tasks are',
+                            'today i need to', 'today i will', 'i need to', 'i will',
+                            'my task is', 'today\'s task is', 'set task:', 'new task:', 'task:', 'primary:',
+                            'working on', 'planning to', 'my goals today', 'today\'s goals', 'my plan is'
+                        ]
+                        for kw in cleanup_keywords:
                             if kw in body_lower:
                                 idx = body_lower.find(kw) + len(kw)
                                 task_text = body[idx:].strip()
@@ -216,12 +234,14 @@ async def handle_twilio_incoming_message(
                         
                         if len(task_text) > 3:  # Ensure we have meaningful task text
                             replacing = current_task is not None
+                            log_response(200, f"[TASK DEBUG] Setting single task (replacing={replacing}): '{task_text}'", "/phone/incoming-message")
                             result = set_todays_tasks(primary=task_text)
+                            log_response(200, f"[TASK DEBUG] set_todays_tasks result: {result}", "/phone/incoming-message")
                             stats_line = get_stats_line()
                             xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
                             action_word = "UPDATED" if replacing else "LOCKED IN"
                             task_set_response = f"✅ TASK {action_word}! {xp_msg}\n\n🎯 PRIMARY: {task_text}\n\n{stats_line}\n\nI've got my eye on you. First check-in in a few hours. Now GO.\n\n-𓂀 Thoth"
-                            log_response(200, f"[Accountability] Task set (replacing={replacing}): {task_text}", "/phone/incoming-message")
+                            log_response(200, f"[TASK DEBUG] Task set successfully (replacing={replacing}): {task_text}", "/phone/incoming-message")
                     
         except Exception as e:
             log_error(f"Accountability check error: {e}")

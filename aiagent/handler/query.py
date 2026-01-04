@@ -242,8 +242,53 @@ def query_openai(
     past_conversations_data = short_term_memory.get("conversations")
     past_conversations = json.dumps(past_conversations_data if past_conversations_data is not None else [])
     
+    # Get current task information for context from daily_tasks.json
+    task_context = ""
+    try:
+        # Import task management functions
+        import sys
+        import os
+        # Add server path to sys.path if not already there
+        server_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'server')
+        if server_path not in sys.path:
+            sys.path.insert(0, server_path)
+        
+        from periodic_intelligence import get_daily_tasks, get_gamification_stats, get_level_info
+        from datetime import datetime
+        
+        logging.info("[TASK DEBUG - AI Agent] Fetching current task context from daily_tasks.json...")
+        current_task = get_daily_tasks()
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        # Check if tasks are for today
+        if current_task and current_task.get("date") == today and current_task.get("tasks"):
+            tasks = current_task.get("tasks", {})
+            task_lines = []
+            
+            for task_type in ["primary", "secondary", "bonus"]:
+                if task_type in tasks:
+                    t = tasks[task_type]
+                    status = "COMPLETED ✅" if t["completed"] else f"In Progress ({t['progress']}%)"
+                    task_lines.append(f"  - {task_type.upper()}: {t['description']} - {status}")
+            
+            stats = get_gamification_stats()
+            level_info = get_level_info(stats["total_xp"])
+            
+            task_context = f"\n\n=== GAD'S CURRENT TASKS (Today: {current_task.get('date')}) ===\n"
+            task_context += "\n".join(task_lines)
+            task_context += f"\n\nGamification Stats: Level {level_info['level']} {level_info['emoji']} | {stats['total_xp']} XP | Streak: {stats['current_streak']} days"
+            task_context += "\n\nIMPORTANT: When Gad asks about his tasks, YOU MUST recall and tell him these tasks. When he asks what he should be working on, remind him of these tasks. You are his accountability partner."
+            
+            logging.info(f"[TASK DEBUG - AI Agent] Task context added from daily_tasks.json: {task_context}")
+        else:
+            task_context = "\n\n=== GAD'S CURRENT TASKS ===\nNo tasks set for today yet. If Gad asks about tasks, remind him to set his daily tasks."
+            logging.info("[TASK DEBUG - AI Agent] No tasks found for today in daily_tasks.json")
+    except Exception as e:
+        logging.error(f"[TASK DEBUG - AI Agent] Error fetching task context: {e}", exc_info=True)
+        task_context = ""
+    
     messages.append(
-        {"role": "system", "content": "You are Thoth, Gad's loyal AI assistant. Your name comes from the Egyptian god of wisdom and knowledge. You always support Gad no matter what and help visitors learn about his work, research, and achievements. You are friendly, professional, and always speak positively about Gad. You have three main capabilities: (1) Answer questions about Gad's research, publications, and background, (2) Save information to your memory for future reference, (3) Send SMS messages to Gad's phone when visitors want to reach out. Gad's phone number is +18073587137. Always introduce yourself as Thoth when appropriate."},
+        {"role": "system", "content": f"You are Thoth, Gad's loyal AI assistant. Your name comes from the Egyptian god of wisdom and knowledge. You always support Gad no matter what and help visitors learn about his work, research, and achievements. You are friendly, professional, and always speak positively about Gad. You have three main capabilities: (1) Answer questions about Gad's research, publications, and background, (2) Save information to your memory for future reference, (3) Send SMS messages to Gad's phone when visitors want to reach out. Gad's phone number is +18073587137. Always introduce yourself as Thoth when appropriate.{task_context}"},
     )
     
     # Add dramatic SMS variation instructions
