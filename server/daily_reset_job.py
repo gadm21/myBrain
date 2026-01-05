@@ -81,14 +81,14 @@ def daily_reset_job():
 def start_daily_reset_scheduler():
     """
     Start the daily reset scheduler.
-    Runs at 7:00 AM every day.
+    Runs at 5:00 AM every day.
     """
     logger.info("[Daily Reset] Starting daily reset scheduler...")
     
-    # Schedule job for 7:00 AM every day
-    schedule.every().day.at("07:00").do(daily_reset_job)
+    # Schedule job for 5:00 AM every day
+    schedule.every().day.at("05:00").do(daily_reset_job)
     
-    logger.info("[Daily Reset] Scheduler started. Job will run at 7:00 AM daily.")
+    logger.info("[Daily Reset] Scheduler started. Job will run at 5:00 AM daily.")
     
     # Run the scheduler loop
     while True:
