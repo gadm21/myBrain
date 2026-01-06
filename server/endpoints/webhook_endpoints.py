@@ -204,10 +204,12 @@ async def handle_twilio_incoming_message(
                 'my goals today', 'today\'s goals', 'my plan is'
             ]
             is_explicit_task_set = any(kw in body_lower for kw in task_set_keywords)
+            log_response(200, f"[TASK DEBUG] Keyword check - body_lower: '{body_lower}', is_explicit: {is_explicit_task_set}", "/phone/incoming-message")
             
             if not task_set_response and not ctx["is_night"]:
                 # Allow setting if no task exists OR if user explicitly wants to set a new task
                 should_set_task = not current_task or is_explicit_task_set
+                log_response(200, f"[TASK DEBUG] should_set_task: {should_set_task}, current_task: {current_task is not None}, is_night: {ctx['is_night']}", "/phone/incoming-message")
                 
                 if should_set_task:
                     is_likely_task = (
@@ -318,7 +320,7 @@ async def handle_twilio_incoming_message(
                 # Add gamification stats
                 stats = get_gamification_stats()
                 level_info = get_level_info(stats.get("total_xp", 0))
-                task_context += f"\nGAMIFICATION: Level {level_info['level']} ({level_info['name']}) | {stats.get('total_xp', 0)} XP | {stats.get('current_streak', 0)} day streak\n"
+                task_context += f"\nGAMIFICATION: Level {level_info['level']} {level_info['emoji']} | {stats.get('total_xp', 0)} XP | {stats.get('current_streak', 0)} day streak\n"
             except Exception as e:
                 log_error(f"Error loading task context: {e}")
             
