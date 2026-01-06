@@ -206,7 +206,8 @@ async def handle_twilio_incoming_message(
             is_explicit_task_set = any(kw in body_lower for kw in task_set_keywords)
             log_response(200, f"[TASK DEBUG] Keyword check - body_lower: '{body_lower}', is_explicit: {is_explicit_task_set}", "/phone/incoming-message")
             
-            if not task_set_response and not ctx["is_night"]:
+            # Allow task setting at night if explicitly requested with keywords
+            if not task_set_response and (not ctx["is_night"] or is_explicit_task_set):
                 # Allow setting if no task exists OR if user explicitly wants to set a new task
                 should_set_task = not current_task or is_explicit_task_set
                 log_response(200, f"[TASK DEBUG] should_set_task: {should_set_task}, current_task: {current_task is not None}, is_night: {ctx['is_night']}", "/phone/incoming-message")
