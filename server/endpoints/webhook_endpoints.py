@@ -244,7 +244,12 @@ async def handle_twilio_incoming_message(
                             log_response(200, f"[TASK DEBUG] Task set successfully (replacing={replacing}): {task_text}", "/phone/incoming-message")
                     
         except Exception as e:
-            log_error(f"Accountability check error: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            log_error(f"[TASK DEBUG] Accountability check error: {e}")
+            log_error(f"[TASK DEBUG] Full traceback: {error_details}")
+            # Return error details in SMS for debugging
+            task_set_response = f"❌ Error setting tasks: {str(e)[:100]}\n\nCheck server logs for details.\n\n-𓂀 Thoth"
         
         # If we have a task-related response, return it directly
         if task_set_response:
