@@ -24,7 +24,6 @@ import logging
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
