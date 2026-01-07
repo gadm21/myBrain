@@ -100,20 +100,15 @@ async def handle_twilio_incoming_message(
                 status_code=200
             )
         
-        # Check if this is a task-setting message for accountability system
+        # Check for simple progress/completion commands (keep these as direct handlers)
         task_set_response = None
         try:
             from server.periodic_intelligence import (
-                get_todays_task, set_todays_tasks, get_time_context,
-                update_task_progress, complete_task, get_stats_line,
-                get_gamification_stats, get_level_info
+                get_todays_task, update_task_progress, complete_task, get_stats_line
             )
             
-            log_response(200, f"[TASK DEBUG] Processing SMS body: '{body}'", "/phone/incoming-message")
-            ctx = get_time_context()
-            current_task = get_todays_task()
-            log_response(200, f"[TASK DEBUG] Current task retrieved: {current_task}", "/phone/incoming-message")
             body_lower = body.lower().strip()
+            current_task = get_todays_task()
             
             # Check for progress updates (number 0-100)
             if body_lower.isdigit():
@@ -132,7 +127,7 @@ async def handle_twilio_incoming_message(
             
             # Check for "done" keywords
             done_keywords = ['done', 'finished', 'completed', 'did it', 'crushed it', 'nailed it', 'complete']
-            if any(kw in body_lower for kw in done_keywords) and current_task:
+            if not task_set_response and any(kw in body_lower for kw in done_keywords) and current_task:
                 # Determine which task is done
                 task_type = "primary"
                 if "secondary" in body_lower or "2" in body_lower:
@@ -161,98 +156,12 @@ async def handle_twilio_incoming_message(
                         
                         task_set_response = f"🎉 {task_type.upper()} COMPLETE! +{xp_total} XP {level_up}\n\n{bonus_text}\n\n{stats_line}\n\nYou absolute legend.\n\n-𓂀 Thoth"
                         log_response(200, f"[Accountability] {task_type} completed", "/phone/incoming-message")
-                elif current_task.get("task"):
-                    # Old format - single task
-                    task = current_task.get("task")
-                    task_set_response = f"🎉 VICTORY!\n\nTask: \"{task}\"\nStatus: CRUSHED ✓\n\nYou absolute legend.\n\n-𓂀 Thoth"
-                    log_response(200, f"[Accountability] Task completed: {task}", "/phone/incoming-message")
-            
-            # Check for multi-task format: "task1 | task2 | task3" - ALWAYS allow setting new tasks with pipe
-            if not task_set_response and "|" in body and not ctx["is_night"]:
-                log_response(200, "[TASK DEBUG] Detected pipe separator - multi-task format", "/phone/incoming-message")
-                parts = [p.strip() for p in body.split("|")]
-                primary = parts[0] if len(parts) > 0 else None
-                secondary = parts[1] if len(parts) > 1 else None
-                bonus = parts[2] if len(parts) > 2 else None
-                log_response(200, f"[TASK DEBUG] Parsed tasks - primary: '{primary}', secondary: '{secondary}', bonus: '{bonus}'", "/phone/incoming-message")
-                
-                if primary:
-                    # Allow updating/replacing existing tasks
-                    replacing = current_task is not None
-                    log_response(200, f"[TASK DEBUG] Setting tasks (replacing={replacing})", "/phone/incoming-message")
-                    result = set_todays_tasks(primary, secondary, bonus)
-                    log_response(200, f"[TASK DEBUG] set_todays_tasks result: {result}", "/phone/incoming-message")
-                    stats_line = get_stats_line()
-                    
-                    tasks_display = f"🎯 PRIMARY: {primary}"
-                    if secondary:
-                        tasks_display += f"\n📌 SECONDARY: {secondary}"
-                    if bonus:
-                        tasks_display += f"\n⭐ BONUS: {bonus}"
-                    
-                    xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
-                    action_word = "UPDATED" if replacing else "LOCKED IN"
-                    task_set_response = f"✅ TASKS {action_word}! {xp_msg}\n\n{tasks_display}\n\n{stats_line}\n\nI've got my eye on you. Now GO.\n\n-𓂀 Thoth"
-                    log_response(200, f"[TASK DEBUG] Multi-tasks set successfully (replacing={replacing}). Response: {task_set_response}", "/phone/incoming-message")
-            
-            # Single task (no pipe separator) - check for explicit task-setting keywords
-            # Enhanced natural language patterns
-            task_set_keywords = [
-                'my task', 'today\'s task', 'set task', 'new task', 'task:', 'primary:', 'working on',
-                'my tasks today are', 'tasks today are', 'today i need to', 'today i will',
-                'my tasks are', 'tasks are', 'i need to', 'i will', 'planning to',
-                'my goals today', 'today\'s goals', 'my plan is'
-            ]
-            is_explicit_task_set = any(kw in body_lower for kw in task_set_keywords)
-            log_response(200, f"[TASK DEBUG] Keyword check - body_lower: '{body_lower}', is_explicit: {is_explicit_task_set}", "/phone/incoming-message")
-            
-            # Allow task setting at night if explicitly requested with keywords
-            if not task_set_response and (not ctx["is_night"] or is_explicit_task_set):
-                # Allow setting if no task exists OR if user explicitly wants to set a new task
-                should_set_task = not current_task or is_explicit_task_set
-                log_response(200, f"[TASK DEBUG] should_set_task: {should_set_task}, current_task: {current_task is not None}, is_night: {ctx['is_night']}", "/phone/incoming-message")
-                
-                if should_set_task:
-                    is_likely_task = (
-                        len(body) > 5 and
-                        not body.endswith('?') and
-                        not body_lower.startswith(('who', 'what', 'when', 'where', 'why', 'how', 'did', 'is', 'are', 'can')) and
-                        not body_lower in ('yes', 'no', 'ok', 'okay', 'done', 'thanks', 'thank you')
-                    )
-                    
-                    if is_likely_task or is_explicit_task_set:
-                        # Clean up the task text if it has keywords - enhanced patterns
-                        task_text = body
-                        cleanup_keywords = [
-                            'my tasks today are', 'tasks today are', 'my tasks are', 'tasks are',
-                            'today i need to', 'today i will', 'i need to', 'i will',
-                            'my task is', 'today\'s task is', 'set task:', 'new task:', 'task:', 'primary:',
-                            'working on', 'planning to', 'my goals today', 'today\'s goals', 'my plan is'
-                        ]
-                        for kw in cleanup_keywords:
-                            if kw in body_lower:
-                                idx = body_lower.find(kw) + len(kw)
-                                task_text = body[idx:].strip()
-                                break
-                        
-                        if len(task_text) > 3:  # Ensure we have meaningful task text
-                            replacing = current_task is not None
-                            log_response(200, f"[TASK DEBUG] Setting single task (replacing={replacing}): '{task_text}'", "/phone/incoming-message")
-                            result = set_todays_tasks(primary=task_text)
-                            log_response(200, f"[TASK DEBUG] set_todays_tasks result: {result}", "/phone/incoming-message")
-                            stats_line = get_stats_line()
-                            xp_msg = f"+{result['xp']['xp_awarded']} XP" if result.get('xp') else ""
-                            action_word = "UPDATED" if replacing else "LOCKED IN"
-                            task_set_response = f"✅ TASK {action_word}! {xp_msg}\n\n🎯 PRIMARY: {task_text}\n\n{stats_line}\n\nI've got my eye on you. First check-in in a few hours. Now GO.\n\n-𓂀 Thoth"
-                            log_response(200, f"[TASK DEBUG] Task set successfully (replacing={replacing}): {task_text}", "/phone/incoming-message")
                     
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
             log_error(f"[TASK DEBUG] Accountability check error: {e}")
             log_error(f"[TASK DEBUG] Full traceback: {error_details}")
-            # Return error details in SMS for debugging
-            task_set_response = f"❌ Error setting tasks: {str(e)[:100]}\n\nCheck server logs for details.\n\n-𓂀 Thoth"
         
         # If we have a task-related response, return it directly
         if task_set_response:
@@ -296,50 +205,26 @@ async def handle_twilio_incoming_message(
             except Exception as e:
                 log_error(f"Error loading SMS history: {e}")
             
-            # Get current task context for AI
-            task_context = ""
-            try:
-                from server.periodic_intelligence import get_todays_task, get_gamification_stats, get_level_info
-                current_task_data = get_todays_task()
-                if current_task_data:
-                    tasks = current_task_data.get("tasks", {})
-                    if tasks:
-                        task_context = "\n\nGAD'S CURRENT TASKS FOR TODAY:\n"
-                        for task_type in ["primary", "secondary", "bonus"]:
-                            if task_type in tasks:
-                                t = tasks[task_type]
-                                status = "✅ COMPLETED" if t.get("completed") else f"{t.get('progress', 0)}% progress"
-                                task_context += f"- {task_type.upper()}: {t.get('description', 'Unknown')} ({status})\n"
-                        task_context += f"Set at: {current_task_data.get('set_at', 'Unknown')}\n"
-                        task_context += f"Check-ins today: {current_task_data.get('check_ins', 0)}\n"
-                    elif current_task_data.get("task"):
-                        # Old format
-                        task_context = f"\n\nGAD'S CURRENT TASK: {current_task_data.get('task')}\n"
-                else:
-                    task_context = "\n\nNO TASK SET FOR TODAY - Gad hasn't told you what he's working on yet.\n"
-                
-                # Add gamification stats
-                stats = get_gamification_stats()
-                level_info = get_level_info(stats.get("total_xp", 0))
-                task_context += f"\nGAMIFICATION: Level {level_info['level']} {level_info['emoji']} | {stats.get('total_xp', 0)} XP | {stats.get('current_streak', 0)} day streak\n"
-            except Exception as e:
-                log_error(f"Error loading task context: {e}")
-            
-            # Build context with SMS history AND task context
+            # Build context with SMS history - let AI use function calling for tasks
             sms_context = {
                 "source": "sms_reply",
                 "sms_history": sms_history_context,
-                "task_context": task_context,
                 "instruction": """You are Thoth, Gad's AI accountability partner. You communicate via SMS.
 
-IMPORTANT CAPABILITIES:
-1. You KNOW Gad's current tasks - check the TASK CONTEXT above
-2. You can remind him of his tasks when he asks
-3. You track his progress and celebrate completions
-4. You send periodic check-ins to keep him accountable
+IMPORTANT - TASK MANAGEMENT:
+You have TWO separate functions for task management:
+1. get_current_tasks() - Use this when Gad ASKS about his tasks (e.g., "what is my task?", "what should I work on?")
+2. set_daily_tasks() - Use this ONLY when Gad wants to SET tasks (e.g., "my task is...", "I will work on...")
 
-If Gad asks about his tasks, tell him what they are from the context.
-If he asks who sent a message, check the SMS history.
+CRITICAL: Questions about tasks are NOT task-setting commands!
+- "What is my task today?" → Call get_current_tasks()
+- "My task is to fix the radar" → Call set_daily_tasks(primary_task="fix the radar")
+
+Other capabilities:
+- Track progress and celebrate completions
+- Send periodic check-ins to keep him accountable
+- Check SMS history to see who sent messages
+
 Be encouraging but direct. Use the 𓂀 Thoth signature."""
             }
             
