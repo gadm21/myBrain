@@ -245,9 +245,6 @@ def query_openai(
     # Get current task information for context from daily_tasks.json
     task_context = ""
     try:
-        # Import task management functions
-        import sys
-        import os
         # Add server path to sys.path if not already there
         server_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'server')
         if server_path not in sys.path:

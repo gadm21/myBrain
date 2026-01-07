@@ -205,10 +205,10 @@ def start_scheduler():
     try:
         scheduler = BackgroundScheduler()
         
-        # Add status update job (every ~3.3 hours)
+        # Add status update job (every 3 hours)
         scheduler.add_job(
             send_status,
-            trigger=IntervalTrigger(hours=1),
+            trigger=IntervalTrigger(hours=3),
             id='send_status_job',
             name='Send status periodically',
             replace_existing=True
