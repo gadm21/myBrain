@@ -205,14 +205,14 @@ def start_scheduler():
     try:
         scheduler = BackgroundScheduler()
         
-        # Add status update job (every 3 hours)
-        scheduler.add_job(
-            send_status,
-            trigger=IntervalTrigger(hours=3),
-            id='send_status_job',
-            name='Send status periodically',
-            replace_existing=True
-        )
+        # Status update job disabled - periodic messages stopped
+        # scheduler.add_job(
+        #     send_status,
+        #     trigger=IntervalTrigger(hours=3),
+        #     id='send_status_job',
+        #     name='Send status periodically',
+        #     replace_existing=True
+        # )
         
         # Add device status check job (every 2 minutes)
         scheduler.add_job(
