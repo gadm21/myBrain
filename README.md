@@ -1,44 +1,8 @@
-# AI-Agent Backend API
+# Thoth: An AI-Agent Backend API
 
-
-## Quick Start
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/backend.git
-   cd backend
-   ```
-
-2. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-3. **Set up virtual environment and install dependencies**
-   ```bash
-   python -m venv venv
-   # On Windows:
-   .\venv\Scripts\activate
-   # On macOS/Linux:
-   # source venv/bin/activate
-   
-   pip install -r requirements.txt
-   ```
-
-4. **Run the server locally**
-   ```bash
-   python -m server.main
-   ```
-
-5. **Run tests**
-   ```bash
-   TEST_LOCAL=1 pytest -s test1.py
-   # For all tests:
-   # pytest
-   ```
-
-The API will be available at `http://localhost:8000`
+This is the Backend for the chatbot (named Thoth) on my personal website: https://www.gadgad.me/. It is currently running on the Railway.  
+The core of this AI-Agent is an OpenAI LLM accessed through API. 
+Thoth features cross-query long-term memory and function calling (for sending SMS messages). 
 
 ## API Documentation
 
@@ -73,17 +37,4 @@ backend/
 └── README.md           # This file
 ```
 
-## Development
 
-### Running Tests
-
-```bash
-# Run a specific test file
-TEST_LOCAL=1 pytest -s test1.py
-
-# Run all tests
-pytest
-
-# Run with coverage report
-pytest --cov=server --cov-report=html
-```
